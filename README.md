@@ -51,6 +51,8 @@ Minutes / Hours mode (!!!Только для теста!!!):
 
 поставить галочку, короч как на фото <img width="226" height="28" alt="image" src="https://github.com/user-attachments/assets/ffe2bebf-b3cc-4cb7-b301-24c27dd97309" />
 
+сохранить настройки и перезапустить прогу. 
+
 нажать на кнопку: <img width="235" height="72" alt="image" src="https://github.com/user-attachments/assets/3a003680-64b9-4880-a85f-c36741cf8dc0" />
 
 вылезет вот такое окно: <img width="478" height="369" alt="image" src="https://github.com/user-attachments/assets/621e1f8f-0f7a-4803-8ac5-7e1932c290ca" />
@@ -58,6 +60,8 @@ Minutes / Hours mode (!!!Только для теста!!!):
 сделать так (убрать галочку): <img width="333" height="79" alt="image" src="https://github.com/user-attachments/assets/1fbd2b59-407d-4603-8823-78885b752b0c" />
 
 дальше вылезет терминал, на него кликнуть и нажать любую кнопку.
+
+Закрыть приложение.
 
 Теперь через 35 дней, после включения ПК у вас будет окно подтверждения UAC, не пугайтесь, это продление отсрочки, нажмите да и снова забудьте об этом на 35 дней.
 
