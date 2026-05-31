@@ -39,14 +39,7 @@ Minutes / Hours mode (!!!Только для теста!!!):
 
 
 
-
-❗❗❗Как запустить прогу:❗❗❗
-
-положите прогу в любую папку и в эту же папку положите этот файл https://drive.google.com/file/d/1T6ZHldy-Qp5I5KieNgDts7W3LepvYMRW/view?usp=sharing, дальше запускайте прогу
-
-
-
-❗❗❗Как запустить саму работу проги:❗❗❗
+❗❗❗Как запустить работу проги:❗❗❗
 
 поставить галочку, короч как на фото <img width="226" height="28" alt="image" src="https://github.com/user-attachments/assets/ffe2bebf-b3cc-4cb7-b301-24c27dd97309" />
 
