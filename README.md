@@ -43,6 +43,7 @@ Minutes / Hours mode (!!!Только для теста!!!):
 
 
 ❗❗❗Как запустить саму работу проги:❗❗❗
+
 поставить галочку, короч как на фото <img width="226" height="28" alt="image" src="https://github.com/user-attachments/assets/ffe2bebf-b3cc-4cb7-b301-24c27dd97309" />
 
 нажать на кнопку: <img width="235" height="72" alt="image" src="https://github.com/user-attachments/assets/3a003680-64b9-4880-a85f-c36741cf8dc0" />
