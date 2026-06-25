@@ -6,7 +6,10 @@ import subprocess
 import winreg
 import datetime
 import time
+import uuid
+import threading
 from pathlib import Path
+import requests
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
 
@@ -14,22 +17,21 @@ from ttkbootstrap.constants import *
 # 1. НАСТРОЙКИ ПУТЕЙ И ПАРАМЕТРЫ ПРИЛОЖЕНИЯ
 # =============================================================================
 APP_NAME = "AntiUpdateInterrupt"
+APP_VERSION = "2.3.0"
 
-# Путь к директории запуска (exe или py)
 if getattr(sys, "frozen", False):
     EXE_DIR = Path(sys.executable).parent
 else:
     EXE_DIR = Path(__file__).parent
 
-# 📁 Хранение данных в %LOCALAPPDATA%\AntiUpdateInterrupt\ (стандарт Windows, не требует админа)
 APP_DATA_DIR = Path(os.environ.get("LOCALAPPDATA", "")) / APP_NAME
 APP_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 CONFIG_PATH = APP_DATA_DIR / "config.json"
 LOG_DIR = APP_DATA_DIR / "logs"
 LOG_FILE = LOG_DIR / "app.log"
+CLIENT_ID_FILE = APP_DATA_DIR / "id" / "client_id.txt"
 
-# 🔹 Батник всегда ищется РЯДОМ с исполняемым файлом
 BAT_FILE = EXE_DIR / "win_upd.bat"
 
 # =============================================================================
@@ -47,15 +49,63 @@ logging.basicConfig(
 logger = logging.getLogger(APP_NAME)
 
 # =============================================================================
-# 3. МЕНЕДЖЕР КОНФИГУРАЦИИ
+# 3. ТЕЛЕМЕТРИЯ
+# =============================================================================
+TELEMETRY_URL = "https://script.google.com/macros/s/AKfycbzcUuImkdAUxdXp3IwJS-4HJSjz0687iA_PjNrG2vMUZS2FENPgoNx42SYm9qYMUvOn/exec"
+
+def get_client_id():
+    """Получает или создает уникальный ID клиента"""
+    CLIENT_ID_FILE.parent.mkdir(parents=True, exist_ok=True)
+    
+    if CLIENT_ID_FILE.exists():
+        try:
+            with open(CLIENT_ID_FILE, "r", encoding="utf-8") as f:
+                cid = f.read().strip()
+                if cid:
+                    return cid
+        except Exception:
+            pass
+    
+    new_id = str(uuid.uuid4())
+    try:
+        with open(CLIENT_ID_FILE, "w", encoding="utf-8") as f:
+            f.write(new_id)
+    except Exception:
+        pass
+    return new_id
+
+def send_telemetry():
+    """Отправляет анонимную статистику"""
+    try:
+        client_id = get_client_id()
+        requests.post(
+            TELEMETRY_URL,
+            json={
+                "client_id": client_id,
+                "version": APP_VERSION,
+                "os": sys.platform,
+                "frozen": getattr(sys, "frozen", False)
+            },
+            timeout=10
+        )
+    except Exception:
+        pass  # Игнорируем ошибки — статистика не критична
+
+def send_telemetry_async():
+    """Запускает отправку телеметрии в отдельном потоке"""
+    thread = threading.Thread(target=send_telemetry, daemon=True)
+    thread.start()
+
+# =============================================================================
+# 4. МЕНЕДЖЕР КОНФИГУРАЦИИ
 # =============================================================================
 class ConfigManager:
     def __init__(self):
         self.config = {
             "enabled": True,
             "interval_value": 35,
-            "interval_unit": "days",      # minutes, hours, days
-            "last_run_date": None,        # хранится как ISO строка: "YYYY-MM-DD"
+            "interval_unit": "days",
+            "last_run_date": None,
             "next_run_date": None,
             "auto_start": False
         }
@@ -75,10 +125,8 @@ class ConfigManager:
             json.dump(self.config, f, indent=4, default=str)
 
     def update_timestamps(self):
-        """Обновляет даты запуска. Использует только КАЛЕНДАРНУЮ дату."""
         today = datetime.date.today()
         delta = self._get_delta(self.config["interval_value"], self.config["interval_unit"])
-        
         self.config["last_run_date"] = today.isoformat()
         self.config["next_run_date"] = (today + delta).isoformat()
         self.save()
@@ -92,7 +140,7 @@ class ConfigManager:
         return datetime.timedelta(days=35)
 
 # =============================================================================
-# 4. УПРАВЛЕНИЕ АВТОЗАГРУЗКОЙ (РЕЕСТР HKCU)
+# 5. УПРАВЛЕНИЕ АВТОЗАГРУЗКОЙ (РЕЕСТР HKCU)
 # =============================================================================
 class AutoStartManager:
     REG_PATH = r"Software\Microsoft\Windows\CurrentVersion\Run"
@@ -103,7 +151,6 @@ class AutoStartManager:
         try:
             with winreg.OpenKey(winreg.HKEY_CURRENT_USER, AutoStartManager.REG_PATH, 0, winreg.KEY_SET_VALUE) as key:
                 if enabled:
-                    # Добавляем флаг --silent для скрытого режима при автозапуске
                     winreg.SetValueEx(key, AutoStartManager.REG_KEY, 0, winreg.REG_SZ, f'"{exe_path}" --silent')
                 else:
                     try:
@@ -116,7 +163,7 @@ class AutoStartManager:
             return False
 
 # =============================================================================
-# 5. ЗАПУСК BAT-ФАЙЛА
+# 6. ЗАПУСК BAT-ФАЙЛА
 # =============================================================================
 def run_win_upd():
     if not BAT_FILE.exists():
@@ -126,7 +173,7 @@ def run_win_upd():
         logger.info("🚀 Запуск win_upd.bat...")
         subprocess.run(
             ["cmd.exe", "/c", str(BAT_FILE)],
-            cwd=str(EXE_DIR),  # ✅ Исправлено: используем EXE_DIR
+            cwd=str(EXE_DIR),
             creationflags=subprocess.CREATE_NO_WINDOW,
             check=True,
             timeout=900
@@ -141,13 +188,14 @@ def run_win_upd():
         return False
 
 # =============================================================================
-# 6. GUI (НАСТРОЙКИ)
+# 7. GUI (НАСТРОЙКИ) — ТЕМА DARKLY
 # =============================================================================
 class AppGUI(ttk.Window):
     def __init__(self, config: ConfigManager, exe_path: str):
+        # ✅ Всегда используем тёмную тему "darkly"
         super().__init__(themename="darkly")
         self.title("AntiUpdate Interrupt")
-        self.geometry("460x560")
+        self.geometry("480x580")
         self.resizable(False, False)
         self.config = config
         self.exe_path = exe_path
@@ -176,10 +224,10 @@ class AppGUI(ttk.Window):
         ttk.Checkbutton(frm, text="Добавить в автозагрузку Windows", variable=self.var_auto).grid(row=2, column=0, columnspan=2, sticky="w", pady=8)
 
         # Интервал
-        ttk.Label(frm, text="Интервал запуска:", font=("Segoe UI", 10, "bold")).grid(row=3, column=0, sticky="w", pady=5)
+        ttk.Label(frm, text="Интервал запуска:", font=("Segoe UI", 10, "bold")).grid(row=3, column=0, sticky="w", pady=10)
         intervals = ["1 минута (тест)", "10 минут (тест)", "1 час (тест)", "35 дней"]
         self.var_interval = ttk.StringVar(value=intervals[-1])
-        ttk.Combobox(frm, values=intervals, textvariable=self.var_interval, state="readonly").grid(row=3, column=1, sticky="ew", pady=5)
+        ttk.Combobox(frm, values=intervals, textvariable=self.var_interval, state="readonly").grid(row=3, column=1, sticky="ew", pady=10)
 
         # Даты
         ttk.Label(frm, text="Последний запуск:").grid(row=4, column=0, sticky="w", pady=4)
@@ -219,12 +267,10 @@ class AppGUI(ttk.Window):
         self.config.config["interval_unit"] = unit
         self.config.config["auto_start"] = self.var_auto.get()
 
-        # Обновляем реестр
         AutoStartManager.update(self.exe_path, self.config.config["auto_start"])
         self.config.save()
         logger.info("Настройки сохранены.")
 
-        # Если выбраны короткие интервалы и программа включена -> запускаем фоновый воркер
         if self.config.config["enabled"] and (unit == "minutes" or unit == "hours"):
             logger.info(f"⏳ Короткий интервал ({val} {unit}). Запуск фонового ожидания...")
             subprocess.Popen(
@@ -254,13 +300,16 @@ class AppGUI(ttk.Window):
             pass
 
 # =============================================================================
-# 7. ТОЧКА ВХОДА (MAIN)
+# 8. ТОЧКА ВХОДА (MAIN)
 # =============================================================================
 def main():
     config = ConfigManager()
     exe_path = str(Path(sys.argv[0]).resolve())
 
-    # 1️⃣ ПЕРВЫЙ ЗАПУСК (нет даты последнего запуска)
+    # 📊 Отправка статистики (всегда, без уведомления)
+    send_telemetry_async()
+
+    # 1️⃣ ПЕРВЫЙ ЗАПУСК
     if not config.config.get("last_run_date"):
         logger.info("🌟 Первый запуск. Выполнение батника...")
         run_win_upd()
@@ -268,7 +317,7 @@ def main():
         logger.info("✅ Первый запуск завершён. Приложение закроется.")
         sys.exit(0)
 
-    # 2️⃣ ФОНОВЫЙ РАБОЧИЙ ПРОЦЕСС (для минут/часов)
+    # 2️⃣ ФОНОВЫЙ РАБОЧИЙ ПРОЦЕСС (минуты/часы)
     if "--bg-worker" in sys.argv:
         if config.config.get("enabled"):
             val = config.config["interval_value"]
@@ -277,7 +326,6 @@ def main():
             target = datetime.datetime.now() + delta
 
             logger.info(f"💤 Фоновый режим: ожидание до {target.strftime('%H:%M:%S')}...")
-            # Устойчивый цикл ожидания (работает корректно даже после спящего режима)
             while datetime.datetime.now() < target:
                 time.sleep(30)
             
@@ -288,7 +336,7 @@ def main():
             logger.info("⛔ Приложение отключено. Фоновый процесс завершён.")
         sys.exit(0)
 
-    # 3️⃣ АВТОЗАГРУЗКА (ТИХИЙ РЕЖИМ `--silent`) -> Работает ТОЛЬКО для дней
+    # 3️⃣ АВТОЗАГРУЗКА (ТИХИЙ РЕЖИМ `--silent`)
     if "--silent" in sys.argv:
         if not config.config.get("enabled"):
             logger.info("⛔ Автозапуск: приложение отключено. Выход.")
@@ -300,7 +348,6 @@ def main():
                 next_date = datetime.date.fromisoformat(next_date_str)
                 today = datetime.date.today()
                 
-                # 📅 СРАВНЕНИЕ ТОЛЬКО ПО ДАТЕ (без времени)
                 if today >= next_date:
                     logger.info(f"🔄 Автозапуск: Дата запуска ({next_date}) наступила. Запуск батника...")
                     run_win_upd()
@@ -316,7 +363,7 @@ def main():
             
         sys.exit(0)
 
-    # 4️⃣ РУЧНОЙ ЗАПУСК (ОТКРЫВАЕМ GUI)
+    # 4️⃣ РУЧНОЙ ЗАПУСК (GUI)
     logger.info("🖥️ Ручной запуск. Открытие окна настроек...")
     app = AppGUI(config, exe_path)
     app.mainloop()
